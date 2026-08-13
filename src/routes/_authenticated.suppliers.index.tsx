@@ -232,7 +232,7 @@ function SuppliersPage() {
         title="Supplier Master"
         description="Central directory of all suppliers used across bills, payments and reports."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 md:flex md:flex-wrap gap-2 w-full md:w-auto">
             <input
               ref={fileRef}
               type="file"
@@ -240,17 +240,17 @@ function SuppliersPage() {
               className="hidden"
               onChange={(e) => e.target.files?.[0] && onImportFile(e.target.files[0])}
             />
-            <Button variant="outline" onClick={downloadTemplate}>
+            <Button variant="outline" onClick={downloadTemplate} className="w-full md:w-auto">
               <Download className="h-4 w-4 mr-2" /> Template
             </Button>
-            <Button variant="outline" onClick={() => fileRef.current?.click()}>
+            <Button variant="outline" onClick={() => fileRef.current?.click()} className="w-full md:w-auto">
               <Upload className="h-4 w-4 mr-2" /> Import
             </Button>
-            <Button variant="outline" onClick={exportToExcel}>
+            <Button variant="outline" onClick={exportToExcel} className="w-full md:w-auto">
               <Download className="h-4 w-4 mr-2" /> Export
             </Button>
             {can(user, "add") && (
-              <Button onClick={openAdd}>
+              <Button onClick={openAdd} className="w-full md:w-auto">
                 <Plus className="h-4 w-4 mr-2" /> Add Supplier
               </Button>
             )}
@@ -259,44 +259,46 @@ function SuppliersPage() {
       />
 
       <Card className="p-4 shadow-soft">
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="relative flex-1 min-w-[220px] max-w-md">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+          <div className="relative w-full md:max-w-md md:flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by code, name, phone, GST, city..."
-              className="pl-9"
+              className="pl-9 w-full"
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-              <SelectItem value="all">All (non-archived)</SelectItem>
-              <SelectItem value="archived">Archived</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={outstandingFilter} onValueChange={setOutstandingFilter}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All balances</SelectItem>
-              <SelectItem value="yes">Has outstanding</SelectItem>
-              <SelectItem value="no">No outstanding</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              <SelectItem value="manufacturer">Manufacturer</SelectItem>
-              <SelectItem value="distributor">Distributor</SelectItem>
-              <SelectItem value="wholesaler">Wholesaler</SelectItem>
-              <SelectItem value="vendor">Vendor</SelectItem>
-            </SelectContent>
-          </Select>
-          <Badge variant="outline" className="ml-auto">{filtered.length} suppliers</Badge>
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full md:w-auto">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="all">All (non-archived)</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={outstandingFilter} onValueChange={setOutstandingFilter}>
+              <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All balances</SelectItem>
+                <SelectItem value="yes">Has outstanding</SelectItem>
+                <SelectItem value="no">No outstanding</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                <SelectItem value="manufacturer">Manufacturer</SelectItem>
+                <SelectItem value="distributor">Distributor</SelectItem>
+                <SelectItem value="wholesaler">Wholesaler</SelectItem>
+                <SelectItem value="vendor">Vendor</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Badge variant="outline" className="w-fit md:ml-auto">{filtered.length} suppliers</Badge>
         </div>
 
         {loading ? (
@@ -360,13 +362,14 @@ function SuppliersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-10 w-10 sm:h-9 sm:w-9"
                             title="View"
                             onClick={() => navigate({ to: "/suppliers/$id", params: { id: s.id } })}
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
                           {can(user, "edit") && (
-                            <Button variant="ghost" size="icon" title="Edit" onClick={() => openEdit(s)}>
+                            <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-9 sm:w-9" title="Edit" onClick={() => openEdit(s)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
                           )}
@@ -375,6 +378,7 @@ function SuppliersPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  className="h-10 w-10 sm:h-9 sm:w-9"
                                   title="Restore"
                                   onClick={() => {
                                     restoreSupplier(s.id);
@@ -388,6 +392,7 @@ function SuppliersPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  className="h-10 w-10 sm:h-9 sm:w-9"
                                   title="Archive"
                                   onClick={() => {
                                     archiveSupplier(s.id);
@@ -401,6 +406,7 @@ function SuppliersPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-10 w-10 sm:h-9 sm:w-9"
                               title="Delete"
                               onClick={() => setDeleteId(s.id)}
                             >

@@ -48,6 +48,7 @@ function PaymentsPage() {
   const [query, setQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [form, setForm] = useState({
     supplierId: "",
@@ -92,6 +93,7 @@ function PaymentsPage() {
   }, [payments, query, modeFilter, supplierMap, billMap]);
 
   const submit = async () => {
+    if (isSubmitting) return;
     if (!form.supplierId || !form.billId || !form.reference) {
       toast.error("Please fill supplier, bill, and reference");
       return;
@@ -119,6 +121,7 @@ function PaymentsPage() {
       toast.error(`Amount exceeds outstanding of ${inr(outstanding)}`);
       return;
     }
+    setIsSubmitting(true);
     try {
       await addPayment({
         supplierId: form.supplierId,
@@ -142,6 +145,8 @@ function PaymentsPage() {
       setOpen(false);
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to record payment");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -256,10 +261,12 @@ function PaymentsPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>
+                <Button variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>
                   Cancel
                 </Button>
-                <Button onClick={submit}>Record payment</Button>
+                <Button onClick={submit} disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Record payment"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -267,29 +274,31 @@ function PaymentsPage() {
       />
 
       <Card className="p-4 shadow-soft">
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="relative flex-1 min-w-[220px] max-w-md">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+          <div className="relative w-full md:max-w-md md:flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search reference, supplier, invoice..."
-              className="pl-9"
+              className="pl-9 w-full"
             />
           </div>
-          <Select value={modeFilter} onValueChange={setModeFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Mode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All modes</SelectItem>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="upi">UPI</SelectItem>
-              <SelectItem value="bank">Bank</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
-            </SelectContent>
-          </Select>
-          <Badge variant="outline" className="ml-auto">Total: {inr(totalPaid)}</Badge>
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full md:w-auto">
+            <Select value={modeFilter} onValueChange={setModeFilter}>
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="Mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All modes</SelectItem>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="upi">UPI</SelectItem>
+                <SelectItem value="bank">Bank</SelectItem>
+                <SelectItem value="cheque">Cheque</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Badge variant="outline" className="w-fit md:ml-auto">Total: {inr(totalPaid)}</Badge>
         </div>
 
         {filtered.length === 0 ? (
@@ -334,6 +343,7 @@ function PaymentsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-10 w-10 sm:h-9 sm:w-9"
                         onClick={() => {
                           deletePayment(p.id);
                           toast.success("Payment removed");

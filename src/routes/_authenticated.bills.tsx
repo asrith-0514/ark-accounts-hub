@@ -110,7 +110,7 @@ function readFile(file: File): Promise<string> {
 }
 
 function BillsPage() {
-  const { bills, suppliers, settings, addBill, updateBill, deleteBill, outstandingByBill } =
+  const { bills, suppliers, payments, settings, addBill, updateBill, deleteBill, outstandingByBill } =
     useData();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -122,6 +122,9 @@ function BillsPage() {
   const [previewDoc, setPreviewDoc] = useState<BillDocument | null>(null);
   const [dupConfirm, setDupConfirm] = useState<{ existing: Bill } | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const hasPayments = editingId ? payments.some((p) => p.billId === editingId) : false;
 
   const supplierMap = useMemo(
     () => Object.fromEntries(suppliers.map((s) => [s.id, s.companyName || s.supplierName])),
@@ -270,7 +273,9 @@ function BillsPage() {
     );
   };
 
-  const persist = () => {
+  const persist = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     const b = calc;
     const firstDoc = form.documents[0];
     const payload = {
@@ -299,20 +304,27 @@ function BillsPage() {
       invoiceImageName: firstDoc && firstDoc.type !== "application/pdf" ? firstDoc.name : undefined,
     };
 
-    if (editingId) {
-      updateBill(editingId, payload);
-      toast.success("Bill updated — outstanding & reports refreshed");
-    } else {
-      addBill(payload);
-      toast.success("Bill added — outstanding & reports refreshed");
+    try {
+      if (editingId) {
+        await updateBill(editingId, payload);
+        toast.success("Bill updated — outstanding & reports refreshed");
+      } else {
+        await addBill(payload);
+        toast.success("Bill added — outstanding & reports refreshed");
+      }
+      setForm(emptyForm());
+      setEditingId(null);
+      setOpen(false);
+      setDupConfirm(null);
+    } catch (e) {
+      console.error("Failed to persist bill", e);
+    } finally {
+      setIsSubmitting(false);
     }
-    setForm(emptyForm());
-    setEditingId(null);
-    setOpen(false);
-    setDupConfirm(null);
   };
 
   const submit = () => {
+    if (isSubmitting) return;
     const err = validate();
     if (err) {
       toast.error(err);
@@ -371,7 +383,14 @@ function BillsPage() {
                       <SupplierSelect
                         value={form.supplierId}
                         onChange={(v) => setForm({ ...form, supplierId: v })}
+                        disabled={hasPayments}
                       />
+                      {hasPayments && (
+                        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+                          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                          <span>Financial fields are locked because payments have been recorded against this bill.</span>
+                        </div>
+                      )}
                       {missingLocation && (
                         <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
                           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -462,6 +481,7 @@ function BillsPage() {
                         step="0.01"
                         value={form.taxable}
                         onChange={(e) => setForm({ ...form, taxable: Number(e.target.value) })}
+                        disabled={hasPayments}
                       />
                     </div>
                     <div className="space-y-2">
@@ -472,6 +492,7 @@ function BillsPage() {
                         step="0.01"
                         value={form.discount}
                         onChange={(e) => setForm({ ...form, discount: Number(e.target.value) })}
+                        disabled={hasPayments}
                       />
                     </div>
                     <div className="space-y-2">
@@ -482,6 +503,7 @@ function BillsPage() {
                         step="0.01"
                         value={form.otherCharges}
                         onChange={(e) => setForm({ ...form, otherCharges: Number(e.target.value) })}
+                        disabled={hasPayments}
                       />
                     </div>
                     <div className="space-y-2">
@@ -491,6 +513,7 @@ function BillsPage() {
                         step="0.01"
                         value={form.roundOff}
                         onChange={(e) => setForm({ ...form, roundOff: Number(e.target.value) })}
+                        disabled={hasPayments}
                       />
                     </div>
 
@@ -547,7 +570,7 @@ function BillsPage() {
                 </div>
 
                 {/* RIGHT — sticky summary + preview */}
-                <div className="border-l bg-muted/30 px-5 py-4 space-y-4 lg:sticky lg:top-0 lg:self-start lg:max-h-[92vh] lg:overflow-y-auto">
+                <div className="border-t lg:border-l lg:border-t-0 bg-muted/30 px-5 py-4 space-y-4 lg:sticky lg:top-0 lg:self-start lg:max-h-[92vh] lg:overflow-y-auto">
                   <div className="rounded-xl border bg-card p-4 shadow-soft space-y-2 text-sm">
                     <div className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1">Bill Calculation</div>
                     <div className="flex justify-between">
@@ -622,7 +645,9 @@ function BillsPage() {
                 <Button variant="outline" onClick={() => setOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={submit}>{editingId ? "Save changes" : "Save Purchase Bill"}</Button>
+                <Button onClick={submit} disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : (editingId ? "Save changes" : "Save Purchase Bill")}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -630,54 +655,56 @@ function BillsPage() {
       />
 
       <Card className="p-4 shadow-soft">
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="relative flex-1 min-w-[220px] max-w-md">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+          <div className="relative w-full md:max-w-md md:flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search invoices..."
-              className="pl-9"
+              className="pl-9 w-full"
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="partial">Partial</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Supplier" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All suppliers</SelectItem>
-              {suppliers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.companyName || s.supplierName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={dateFilter} onValueChange={setDateFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Any date</SelectItem>
-              <SelectItem value="today">Due today</SelectItem>
-              <SelectItem value="tomorrow">Due tomorrow</SelectItem>
-              <SelectItem value="week">Due this week</SelectItem>
-              <SelectItem value="month">This month</SelectItem>
-            </SelectContent>
-          </Select>
-          <Badge variant="outline" className="ml-auto">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full md:w-auto">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Supplier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All suppliers</SelectItem>
+                {suppliers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.companyName || s.supplierName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="Period" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any date</SelectItem>
+                <SelectItem value="today">Due today</SelectItem>
+                <SelectItem value="tomorrow">Due tomorrow</SelectItem>
+                <SelectItem value="week">Due this week</SelectItem>
+                <SelectItem value="month">This month</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Badge variant="outline" className="w-fit md:ml-auto">
             {filtered.length} bills
           </Badge>
         </div>
@@ -751,16 +778,17 @@ function BillsPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-10 w-10 sm:h-9 sm:w-9"
                               onClick={() => setPreviewDoc(firstDoc)}
                               title="Preview document"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(b)} title="Edit">
+                          <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-9 sm:w-9" onClick={() => openEdit(b)} title="Edit">
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteId(b.id)} title="Delete">
+                          <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-9 sm:w-9" onClick={() => setDeleteId(b.id)} title="Delete">
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
@@ -814,8 +842,10 @@ function BillsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={persist}>Save anyway</AlertDialogAction>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={persist} disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save anyway"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

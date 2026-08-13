@@ -59,7 +59,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex items-center gap-2.5 px-5 py-5 border-b border-sidebar-border">
+      <div className="flex items-center gap-2.5 px-5 pt-[calc(env(safe-area-inset-top,0px)+1.25rem)] pb-5 border-b border-sidebar-border">
         <img src={arkLogo.url} alt="ARK Distributors" className="h-10 w-auto object-contain" />
         <div className="min-w-0">
           <p className="font-semibold truncate leading-tight">{settings.companyName}</p>
@@ -154,7 +154,7 @@ export function AppShell() {
         <SidebarContent />
       </aside>
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 bg-background/85 backdrop-blur border-b border-border">
+        <header className="sticky top-0 z-30 bg-background/85 backdrop-blur border-b border-border pt-[env(safe-area-inset-top,0px)]">
           <div className="flex items-center gap-3 px-4 sm:px-6 h-16">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>

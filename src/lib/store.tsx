@@ -49,10 +49,10 @@ interface DataContextValue extends DataState {
   ) => DuplicateHit | null;
   nextSupplierCode: () => string;
 
-  addBill: (b: Omit<Bill, "id" | "createdAt" | "status">) => Bill;
-  updateBill: (id: string, patch: Partial<Bill>) => void;
+  addBill: (b: Omit<Bill, "id" | "createdAt" | "status">) => Promise<Bill>;
+  updateBill: (id: string, patch: Partial<Bill>) => Promise<void>;
   deleteBill: (id: string) => void;
-  addPayment: (p: Omit<Payment, "id" | "createdAt">) => Payment;
+  addPayment: (p: Omit<Payment, "id" | "createdAt">) => Promise<Payment>;
   deletePayment: (id: string) => void;
   updateSettings: (patch: Partial<CompanySettings>) => void;
 
@@ -767,48 +767,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return uploaded;
     };
 
-    const addBill: DataContextValue["addBill"] = (b) => {
+    const addBill: DataContextValue["addBill"] = async (b) => {
       const id = uid("bill");
       const bill: Bill = { ...b, id, status: "pending", createdAt: todayISO() };
       setBills((prev) => [bill, ...prev]);
-      void (async () => {
-        const { error } = await supabase.from("bills").insert({ ...billToDb(bill), id } as any);
-        if (error) {
-          toast.error(`Failed to save bill: ${error.message}`);
-          setBills((prev) => prev.filter((x) => x.id !== id));
-          return;
-        }
-        await pushWorkflowEvent(id, "none", bill.workflowStatus);
-        pushActivity("bill_added", `Bill ${bill.invoiceNumber} added`);
-        pushHistory(bill.supplierId, "Invoice added", `${bill.invoiceNumber} — ₹${bill.total.toLocaleString("en-IN")}`);
-        const docs = bill.documents ?? [];
-        if (docs.length) {
-          const stored = await uploadBillDocuments(id, docs);
-          setBills((prev) => prev.map((x) => (x.id === id ? { ...x, documents: stored } : x)));
-        }
-      })();
+      
+      const { error } = await supabase.from("bills").insert({ ...billToDb(bill), id } as any);
+      if (error) {
+        toast.error(`Failed to save bill: ${error.message}`);
+        setBills((prev) => prev.filter((x) => x.id !== id));
+        throw error;
+      }
+      await pushWorkflowEvent(id, "none", bill.workflowStatus);
+      pushActivity("bill_added", `Bill ${bill.invoiceNumber} added`);
+      pushHistory(bill.supplierId, "Invoice added", `${bill.invoiceNumber} — ₹${bill.total.toLocaleString("en-IN")}`);
+      const docs = bill.documents ?? [];
+      if (docs.length) {
+        const stored = await uploadBillDocuments(id, docs);
+        setBills((prev) => prev.map((x) => (x.id === id ? { ...x, documents: stored } : x)));
+      }
       return bill;
     };
 
-    const updateBill: DataContextValue["updateBill"] = (id, patch) => {
-      void (async () => {
-        const oldBill = bills.find((b) => b.id === id);
-        const { error } = await supabase.from("bills").update(billToDb(patch) as any).eq("id", id);
-        if (error) {
-          toast.error(`Update failed: ${error.message}`);
-          return;
-        }
-        if (patch.workflowStatus && oldBill && oldBill.workflowStatus !== patch.workflowStatus) {
-          await pushWorkflowEvent(id, oldBill.workflowStatus, patch.workflowStatus);
-        }
-        setBills((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-        pushActivity("bill_updated", `Bill ${oldBill?.invoiceNumber ?? ""} updated`);
-        pushHistory(oldBill?.supplierId ?? "", "Bill updated", `${oldBill?.invoiceNumber ?? ""} updated`);
-        if (patch.documents) {
-          const stored = await uploadBillDocuments(id, patch.documents);
-          setBills((prev) => prev.map((b) => (b.id === id ? { ...b, documents: stored } : b)));
-        }
-      })();
+    const updateBill: DataContextValue["updateBill"] = async (id, patch) => {
+      const oldBill = bills.find((b) => b.id === id);
+      const { error } = await supabase.from("bills").update(billToDb(patch) as any).eq("id", id);
+      if (error) {
+        toast.error(`Update failed: ${error.message}`);
+        throw error;
+      }
+      if (patch.workflowStatus && oldBill && oldBill.workflowStatus !== patch.workflowStatus) {
+        await pushWorkflowEvent(id, oldBill.workflowStatus, patch.workflowStatus);
+      }
+      setBills((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+      pushActivity("bill_updated", `Bill ${oldBill?.invoiceNumber ?? ""} updated`);
+      pushHistory(oldBill?.supplierId ?? "", "Bill updated", `${oldBill?.invoiceNumber ?? ""} updated`);
+      if (patch.documents) {
+        const stored = await uploadBillDocuments(id, patch.documents);
+        setBills((prev) => prev.map((b) => (b.id === id ? { ...b, documents: stored } : b)));
+      }
     };
 
     const deleteBill: DataContextValue["deleteBill"] = (id) => {
@@ -841,20 +838,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })();
     };
 
-    const addPayment: DataContextValue["addPayment"] = (p) => {
+    const addPayment: DataContextValue["addPayment"] = async (p) => {
       const id = uid("pay");
       const pay: Payment = { ...p, id, createdAt: todayISO() };
       
-      void (async () => {
-        const { error } = await supabase.from("payments").insert({ ...paymentToDb(pay), id } as any);
-        if (error) {
-          toast.error(`Payment failed: ${error.message}`);
-          return;
-        }
-        await refetchAll();
-        pushActivity("payment_added", `Payment ₹${pay.amount.toLocaleString("en-IN")} recorded`);
-        pushHistory(pay.supplierId, "Payment recorded", `₹${pay.amount.toLocaleString("en-IN")} · ${pay.reference}`);
-      })();
+      const { error } = await supabase.from("payments").insert({ ...paymentToDb(pay), id } as any);
+      if (error) {
+        toast.error(`Payment failed: ${error.message}`);
+        throw error;
+      }
+      await refetchAll();
+      pushActivity("payment_added", `Payment ₹${pay.amount.toLocaleString("en-IN")} recorded`);
+      pushHistory(pay.supplierId, "Payment recorded", `₹${pay.amount.toLocaleString("en-IN")} · ${pay.reference}`);
       
       return pay;
     };

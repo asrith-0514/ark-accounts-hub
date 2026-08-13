@@ -179,7 +179,7 @@ function DashboardPage() {
         description={`Overview as of ${fmtDate(new Date())}`}
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Outstanding"
           value={inrCompact(stats.outstanding)}

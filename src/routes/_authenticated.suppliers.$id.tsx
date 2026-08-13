@@ -317,7 +317,7 @@ function SupplierDetailPage() {
         />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Outstanding" value={inr(outstanding)} icon={IndianRupee} tone="warning" />
         <StatCard label="Opening Balance" value={inr(supplier.openingOutstanding)} icon={Wallet} tone="info" />
         <StatCard label="Total Billed" value={inr(totalBilled)} icon={FileText} />
