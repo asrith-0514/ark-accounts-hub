@@ -60,6 +60,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { SupplierSelect } from "@/components/SupplierSelect";
 import { useData } from "@/lib/store";
 import { fmtDate, inr, todayISO, addDays, isoDate } from "@/lib/format";
+import { getDueTimeline, type DueTimelineState } from "@/lib/due-timeline";
 import { calcBill, deriveGstType, DEFAULT_GST_RATE } from "@/lib/gst";
 import type { Bill, BillDocument, BillStatus } from "@/lib/types";
 import { toast } from "sonner";
@@ -70,6 +71,12 @@ export const Route = createFileRoute("/_authenticated/bills")({
 
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"];
 const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+const dueTimelineClass: Record<DueTimelineState, string> = {
+  upcoming: "text-success",
+  today: "text-warning-foreground",
+  overdue: "text-destructive",
+  paid: "text-success",
+};
 
 interface FormState {
   supplierId: string;
@@ -123,6 +130,22 @@ function BillsPage() {
   const [dupConfirm, setDupConfirm] = useState<{ existing: Bill } | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+
+  useEffect(() => {
+    let timeout: number;
+    const updateAtMidnight = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      timeout = window.setTimeout(() => {
+        setCurrentDate(new Date());
+        updateAtMidnight();
+      }, nextMidnight.getTime() - now.getTime());
+    };
+
+    updateAtMidnight();
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   const hasPayments = editingId ? payments.some((p) => p.billId === editingId) : false;
 
@@ -729,6 +752,7 @@ function BillsPage() {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Outstanding</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Due Timeline</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -736,6 +760,7 @@ function BillsPage() {
                 {filtered.map((b) => {
                   const docs = b.documents && b.documents.length > 0 ? b.documents : b.document ? [b.document] : [];
                   const firstDoc = docs[0];
+                  const dueTimeline = getDueTimeline(b.dueDate, b.status, currentDate);
                   return (
                     <TableRow key={b.id}>
                       <TableCell className="font-medium">
@@ -771,6 +796,11 @@ function BillsPage() {
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={b.status as BillStatus} />
+                      </TableCell>
+                      <TableCell>
+                        <span className={`font-medium ${dueTimelineClass[dueTimeline.state]}`}>
+                          {dueTimeline.label}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-0.5">
