@@ -33,3 +33,6 @@ dist-ssr
 
 # Environment variables
 .env
+
+.vercel
+.env*

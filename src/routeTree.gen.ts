@@ -19,6 +19,7 @@ import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authen
 import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated.payments'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated.reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
+import { Route as ApiSendTestPushRouteImport } from './routes/api.send-test-push'
 import { Route as AuthenticatedSuppliersIndexRouteImport } from './routes/_authenticated.suppliers.index'
 import { Route as AuthenticatedSuppliersIdRouteImport } from './routes/_authenticated.suppliers.$id'
 
@@ -72,6 +73,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const ApiSendTestPushRoute = ApiSendTestPushRouteImport.update({
+  id: '/api/send-test-push',
+  path: '/api/send-test-push',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedSuppliersIndexRoute =
   AuthenticatedSuppliersIndexRouteImport.update({
     id: '/suppliers/',
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/payments': typeof AuthenticatedPaymentsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/send-test-push': typeof ApiSendTestPushRoute
   '/suppliers/$id': typeof AuthenticatedSuppliersIdRoute
   '/suppliers/': typeof AuthenticatedSuppliersIndexRoute
 }
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/payments': typeof AuthenticatedPaymentsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/send-test-push': typeof ApiSendTestPushRoute
   '/suppliers/$id': typeof AuthenticatedSuppliersIdRoute
   '/suppliers': typeof AuthenticatedSuppliersIndexRoute
 }
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/_authenticated/payments': typeof AuthenticatedPaymentsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/api/send-test-push': typeof ApiSendTestPushRoute
   '/_authenticated/suppliers/$id': typeof AuthenticatedSuppliersIdRoute
   '/_authenticated/suppliers/': typeof AuthenticatedSuppliersIndexRoute
 }
@@ -138,6 +147,7 @@ export interface FileRouteTypes {
     | '/payments'
     | '/reports'
     | '/settings'
+    | '/api/send-test-push'
     | '/suppliers/$id'
     | '/suppliers/'
   fileRoutesByTo: FileRoutesByTo
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/payments'
     | '/reports'
     | '/settings'
+    | '/api/send-test-push'
     | '/suppliers/$id'
     | '/suppliers'
   id:
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/_authenticated/payments'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
+    | '/api/send-test-push'
     | '/_authenticated/suppliers/$id'
     | '/_authenticated/suppliers/'
   fileRoutesById: FileRoutesById
@@ -173,6 +185,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  ApiSendTestPushRoute: typeof ApiSendTestPushRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -247,6 +260,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/send-test-push': {
+      id: '/api/send-test-push'
+      path: '/api/send-test-push'
+      fullPath: '/api/send-test-push'
+      preLoaderRoute: typeof ApiSendTestPushRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/suppliers/': {
       id: '/_authenticated/suppliers/'
       path: '/suppliers'
@@ -296,6 +316,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  ApiSendTestPushRoute: ApiSendTestPushRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

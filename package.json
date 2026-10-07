@@ -11,6 +11,9 @@
     "lint": "eslint .",
     "format": "prettier --write ."
   },
+  "allowScripts": {
+    "core-js@3.50.0": true
+  },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",

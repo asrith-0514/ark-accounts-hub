@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "@/lib/auth";
 import { DataProvider } from "@/lib/store";
+import { registerPushServiceWorker } from "@/lib/push";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -37,7 +38,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -146,12 +147,12 @@ function RootComponent() {
 
   useEffect(() => {
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker
-          .register("/sw.js")
-          .then((reg) => console.log("Service Worker registered successfully:", reg.scope))
-          .catch((err) => console.error("Service Worker registration failed:", err));
-      });
+      registerPushServiceWorker()
+        .then((reg) => {
+          console.log("Service Worker registered successfully:", reg.scope);
+          reg.update().catch((err) => console.warn("Service Worker update check failed:", err));
+        })
+        .catch((err) => console.error("Service Worker registration failed:", err));
     }
   }, []);
 

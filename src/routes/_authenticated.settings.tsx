@@ -18,6 +18,8 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { INDIAN_STATES } from "@/lib/india-locations";
 import { useData } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import { DEFAULT_VAPID_PUBLIC_KEY, registerPushServiceWorker } from "@/lib/push";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -31,6 +33,161 @@ function SettingsPage() {
   const [companyState, setCompanyState] = useState(settings.companyState || "Andhra Pradesh");
 
   const isOwner = user?.role === "owner";
+
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [isPushLoading, setIsPushLoading] = useState(true);
+
+  // Helper to convert URLsafe base64 to Uint8Array for applicationServerKey
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, "+")
+      .replace(/_/g, "/");
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  useEffect(() => {
+    async function checkSubscription() {
+      console.log("[Push Notification Setup] Running initial subscription status check...");
+      if (
+        typeof window === "undefined" ||
+        !("serviceWorker" in navigator) ||
+        !("PushManager" in window)
+      ) {
+        console.warn("[Push Notification Setup] Service worker or PushManager not supported in this browser context.");
+        setPushSupported(false);
+        setIsPushLoading(false);
+        return;
+      }
+      setPushSupported(true);
+
+      try {
+        console.log("[Push Notification Setup] Registering the push service worker...");
+        const registration = await registerPushServiceWorker();
+        console.log("[Push Notification Setup] Service worker registered. Checking push subscription...");
+        const subscription = await registration.pushManager.getSubscription();
+        console.log("[Push Notification Setup] Subscription check complete. Current sub exists:", !!subscription);
+        setPushEnabled(!!subscription);
+      } catch (err) {
+        console.error("[Push Notification Setup] Error during status check:", err);
+      } finally {
+        setIsPushLoading(false);
+      }
+    }
+    checkSubscription();
+  }, []);
+
+  const togglePush = async (checked: boolean) => {
+    if (!pushSupported) return;
+    setIsPushLoading(true);
+    console.log(`[Push Notification Setup] Toggling push notifications to: ${checked}`);
+    try {
+      const actionPromise = (async () => {
+        console.log("[Push Notification Setup] Registering the push service worker...");
+        const registration = await registerPushServiceWorker();
+        console.log("[Push Notification Setup] Service worker registered.");
+
+        if (checked) {
+          console.log("[Push Notification Setup] Requesting browser notification permission...");
+          const permission = await Notification.requestPermission();
+          console.log(`[Push Notification Setup] Permission request returned: ${permission}`);
+          if (permission !== "granted") {
+            throw new Error("Permission for push notifications was denied");
+          }
+
+          const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+          console.log(`[Push Notification Setup] VAPID Public Key loaded (length: ${vapidPublicKey?.length ?? 0})`);
+
+          console.log("[Push Notification Setup] Subscribing to push service...");
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+          });
+          console.log("[Push Notification Setup] Subscription successful! Endpoint:", subscription.endpoint);
+
+          const subJSON = subscription.toJSON();
+          let p256dh = subJSON.keys?.p256dh;
+          let auth = subJSON.keys?.auth;
+
+          if (!p256dh || !auth) {
+            const rawKey = subscription.getKey ? subscription.getKey("p256dh") : null;
+            const rawAuth = subscription.getKey ? subscription.getKey("auth") : null;
+            if (rawKey && rawAuth) {
+              p256dh = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(rawKey))));
+              auth = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(rawAuth))));
+            }
+          }
+
+          if (!p256dh || !auth) {
+            throw new Error("Failed to retrieve subscription keys from the browser");
+          }
+
+          console.log("[Push Notification Setup] Registering subscription keys in Supabase database...");
+          // Delete any existing subscription for this endpoint first to avoid unique key conflicts
+          await (supabase as any)
+            .from("push_subscriptions")
+            .delete()
+            .eq("user_id", user?.id)
+            .eq("endpoint", subscription.endpoint);
+
+          const { error } = await (supabase as any).from("push_subscriptions").insert({
+            user_id: user?.id,
+            endpoint: subscription.endpoint,
+            p256dh_key: p256dh,
+            auth_key: auth,
+          });
+
+          if (error) {
+            console.error("[Push Notification Setup] Supabase save error. Cleaning up subscription...", error);
+            await subscription.unsubscribe();
+            throw error;
+          }
+
+          console.log("[Push Notification Setup] Subscription successfully recorded in database.");
+          setPushEnabled(true);
+          toast.success("Push notifications enabled on this device!");
+        } else {
+          console.log("[Push Notification Setup] Unsubscribing device...");
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            await subscription.unsubscribe();
+            console.log("[Push Notification Setup] Unsubscribed from browser push service. Deleting from DB...");
+            const { error } = await (supabase as any)
+              .from("push_subscriptions")
+              .delete()
+              .eq("user_id", user?.id)
+              .eq("endpoint", subscription.endpoint);
+            if (error) console.error("[Push Notification Setup] Failed to delete subscription row from Supabase", error);
+          }
+          setPushEnabled(false);
+          toast.success("Push notifications disabled on this device.");
+        }
+      })();
+
+      await actionPromise;
+    } catch (err: any) {
+      console.error("[Push Notification Setup] Error during toggle:", err);
+      toast.error(err.message || "Failed to toggle push notifications");
+      // Reset checkbox state to match actual state
+      try {
+        const registration = await registerPushServiceWorker();
+        const subscription = await registration.pushManager.getSubscription();
+        setPushEnabled(!!subscription);
+      } catch (innerErr) {
+        console.error("Error resetting switch state", innerErr);
+      }
+    } finally {
+      setIsPushLoading(false);
+    }
+  };
 
   useEffect(() => {
     setName(settings.companyName);
@@ -142,6 +299,23 @@ function SettingsPage() {
               />
             </div>
           ))}
+          <div className="flex items-center justify-between py-1 pt-3 border-t">
+            <div>
+              <p className="text-sm font-medium">Push notifications on this device</p>
+              <p className="text-xs text-muted-foreground">
+                {!pushSupported
+                  ? "Not supported on this browser"
+                  : pushEnabled
+                  ? "Enabled for lockscreen notifications"
+                  : "Request permission and register device"}
+              </p>
+            </div>
+            <Switch
+              disabled={!pushSupported || isPushLoading}
+              checked={pushEnabled}
+              onCheckedChange={togglePush}
+            />
+          </div>
           <div className="flex items-center justify-between py-1 pt-3 border-t">
             <div>
               <p className="text-sm font-medium">Dark theme</p>
