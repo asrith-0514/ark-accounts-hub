@@ -17,6 +17,10 @@ import {
   Calendar,
   Wallet,
   TrendingUp,
+  Download,
+  ChevronDown,
+  FileSpreadsheet,
+  FileDown,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
@@ -25,9 +29,22 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +63,8 @@ import { fmtDate, inr } from "@/lib/format";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { SupplierHistoryEntry, Bill, Payment } from "@/lib/types";
+import { downloadSupplierBills, type ExportBillsFormat } from "@/lib/export-bills";
+import { downloadSupplierLedger, type ExportLedgerFormat } from "@/lib/export-ledger";
 
 export const Route = createFileRoute("/_authenticated/suppliers/$id")({
   component: SupplierDetailPage,
@@ -64,6 +83,7 @@ function SupplierDetailPage() {
     restoreSupplier,
     deleteSupplier,
     updateSupplier,
+    settings,
     loading: storeLoading,
   } = useData();
   const { user } = useAuth();
@@ -79,13 +99,52 @@ function SupplierDetailPage() {
   const [notes, setNotes] = useState(supplier?.notes ?? "");
   const [remarks, setRemarks] = useState(supplier?.remarks ?? "");
 
+  const handleDownloadBills = (format: ExportBillsFormat) => {
+    if (!supplier) return;
+    const combinedBills =
+      supplierBills.length > 0
+        ? supplierBills
+        : bills.filter((b) => b.supplierId === supplier.id && !b.deletedAt);
+    const combinedPayments =
+      supplierPayments.length > 0
+        ? supplierPayments
+        : payments.filter((p) => p.supplierId === supplier.id);
+
+    downloadSupplierBills({
+      format,
+      supplier,
+      bills: combinedBills,
+      payments: combinedPayments,
+      companyName: settings?.companyName || "ARK Distributors",
+    });
+  };
+
+  const handleDownloadLedger = (format: ExportLedgerFormat) => {
+    if (!supplier) return;
+    const combinedBills =
+      supplierBills.length > 0
+        ? supplierBills
+        : bills.filter((b) => b.supplierId === supplier.id && !b.deletedAt);
+    const combinedPayments =
+      supplierPayments.length > 0
+        ? supplierPayments
+        : payments.filter((p) => p.supplierId === supplier.id);
+
+    downloadSupplierLedger({
+      format,
+      supplier,
+      bills: combinedBills,
+      payments: combinedPayments,
+      companyName: settings?.companyName || "ARK Distributors",
+    });
+  };
+
   useEffect(() => {
     if (supplier) {
       setNotes(supplier.notes ?? "");
       setRemarks(supplier.remarks ?? "");
     }
   }, [supplier]);
-
 
   const [supplierBills, setSupplierBills] = useState<Bill[]>([]);
   const [supplierPayments, setSupplierPayments] = useState<Payment[]>([]);
@@ -94,16 +153,29 @@ function SupplierDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    
+
     let active = true;
-    
+
     const fetchDetails = async () => {
       setLoadingDetails(true);
       try {
         const [bl, pay, hist] = await Promise.all([
-          supabase.from("bills").select("*").eq("supplier_id", id).is("deleted_at", null).order("created_at", { ascending: false }),
-          supabase.from("payments").select("*").eq("supplier_id", id).order("created_at", { ascending: false }),
-          supabase.from("supplier_history").select("*").eq("supplier_id", id).order("at", { ascending: false })
+          supabase
+            .from("bills")
+            .select("*")
+            .eq("supplier_id", id)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("payments")
+            .select("*")
+            .eq("supplier_id", id)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("supplier_history")
+            .select("*")
+            .eq("supplier_id", id)
+            .order("at", { ascending: false }),
         ]);
 
         if (!active) return;
@@ -115,14 +187,16 @@ function SupplierDetailPage() {
           setSupplierPayments(pay.data.map(mapPayment));
         }
         if (hist.data) {
-          setHistory(hist.data.map((h: any) => ({
-            id: h.id,
-            supplierId: h.supplier_id,
-            at: h.at,
-            user: h.user_name,
-            action: h.action,
-            details: h.details ?? undefined
-          })));
+          setHistory(
+            hist.data.map((h: any) => ({
+              id: h.id,
+              supplierId: h.supplier_id,
+              at: h.at,
+              user: h.user_name,
+              action: h.action,
+              details: h.details ?? undefined,
+            })),
+          );
         }
       } catch (err) {
         console.error(err);
@@ -154,7 +228,9 @@ function SupplierDetailPage() {
       if (!p) return 0;
       return Math.max(
         0,
-        Math.round((new Date(p.paymentDate).getTime() - new Date(b.invoiceDate).getTime()) / 86400000),
+        Math.round(
+          (new Date(p.paymentDate).getTime() - new Date(b.invoiceDate).getTime()) / 86400000,
+        ),
       );
     });
     return Math.round(days.reduce((a, b) => a + b, 0) / days.length);
@@ -246,7 +322,6 @@ function SupplierDetailPage() {
 
   if (!supplier) return <Navigate to="/suppliers" replace />;
 
-
   const saveNotes = () => {
     updateSupplier(supplier.id, { notes, remarks });
     toast.success("Notes updated");
@@ -264,11 +339,15 @@ function SupplierDetailPage() {
           title={supplier.supplierName}
           description={
             <span className="flex flex-wrap gap-2 items-center">
-              <Badge variant="outline" className="font-mono">{supplier.code}</Badge>
+              <Badge variant="outline" className="font-mono">
+                {supplier.code}
+              </Badge>
               {supplier.archived ? (
                 <Badge variant="outline">Archived</Badge>
               ) : supplier.status === "active" ? (
-                <Badge className="bg-success/15 text-success border-success/20" variant="outline">Active</Badge>
+                <Badge className="bg-success/15 text-success border-success/20" variant="outline">
+                  Active
+                </Badge>
               ) : (
                 <Badge variant="outline">Inactive</Badge>
               )}
@@ -310,8 +389,56 @@ function SupplierDetailPage() {
                   <Trash2 className="h-4 w-4 mr-2 text-destructive" /> Delete
                 </Button>
               )}
-              <Button asChild variant="outline"><Link to="/bills">Add Bill</Link></Button>
-              <Button asChild><Link to="/payments">Add Payment</Link></Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Download className="h-4 w-4 mr-2" /> Download Ledger
+                    <ChevronDown className="h-3.5 w-3.5 ml-1.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => handleDownloadLedger("xlsx")}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+                    <span>Excel (.xlsx)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownloadLedger("pdf")}>
+                    <FileDown className="h-4 w-4 mr-2 text-rose-600" />
+                    <span>PDF (.pdf)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownloadLedger("csv")}>
+                    <FileText className="h-4 w-4 mr-2 text-blue-600" />
+                    <span>CSV (.csv)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Bills
+                    <ChevronDown className="h-3.5 w-3.5 ml-1.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => handleDownloadBills("xlsx")}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+                    <span>Excel (.xlsx)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownloadBills("pdf")}>
+                    <FileDown className="h-4 w-4 mr-2 text-rose-600" />
+                    <span>PDF (.pdf)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDownloadBills("csv")}>
+                    <FileText className="h-4 w-4 mr-2 text-blue-600" />
+                    <span>CSV (.csv)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button asChild variant="outline">
+                <Link to="/bills">Add Bill</Link>
+              </Button>
+              <Button asChild>
+                <Link to="/payments">Add Payment</Link>
+              </Button>
             </div>
           }
         />
@@ -319,7 +446,12 @@ function SupplierDetailPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Outstanding" value={inr(outstanding)} icon={IndianRupee} tone="warning" />
-        <StatCard label="Opening Balance" value={inr(supplier.openingOutstanding)} icon={Wallet} tone="info" />
+        <StatCard
+          label="Opening Balance"
+          value={inr(supplier.openingOutstanding)}
+          icon={Wallet}
+          tone="info"
+        />
         <StatCard label="Total Billed" value={inr(totalBilled)} icon={FileText} />
         <StatCard label="Total Paid" value={inr(totalPaid)} icon={IndianRupee} tone="success" />
         <StatCard label="Pending Bills" value={pendingCount} icon={FileText} />
@@ -333,12 +465,18 @@ function SupplierDetailPage() {
           <div>
             <h3 className="font-semibold mb-3">Company Information</h3>
             <dl className="space-y-3 text-sm">
-              <Info icon={Building2} label="Company">{supplier.companyName || "—"}</Info>
+              <Info icon={Building2} label="Company">
+                {supplier.companyName || "—"}
+              </Info>
               <Info icon={Phone} label="Phone">
                 {supplier.phone || "—"}
-                {supplier.altPhone && <div className="text-xs text-muted-foreground">Alt: {supplier.altPhone}</div>}
+                {supplier.altPhone && (
+                  <div className="text-xs text-muted-foreground">Alt: {supplier.altPhone}</div>
+                )}
               </Info>
-              <Info icon={Mail} label="Email">{supplier.email || "—"}</Info>
+              <Info icon={Mail} label="Email">
+                {supplier.email || "—"}
+              </Info>
               <Info icon={MapPin} label="Address">
                 {supplier.address || "—"}
                 {(supplier.city || supplier.state || supplier.pincode) && (
@@ -358,7 +496,9 @@ function SupplierDetailPage() {
                     A/c {supplier.accountNumber} · {supplier.ifsc}
                   </div>
                 )}
-                {supplier.upiId && <div className="text-xs text-muted-foreground">UPI: {supplier.upiId}</div>}
+                {supplier.upiId && (
+                  <div className="text-xs text-muted-foreground">UPI: {supplier.upiId}</div>
+                )}
               </Info>
               <Info icon={Calendar} label="Terms">
                 {supplier.paymentTerms || "—"} · {supplier.creditDays} credit days
@@ -383,41 +523,83 @@ function SupplierDetailPage() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : ledger.length === 0 ? (
-                <EmptyState title="No transactions yet" description="Add a bill or payment to build the ledger." />
+                <EmptyState
+                  title="No transactions yet"
+                  description="Add a bill or payment to build the ledger."
+                />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Invoice</TableHead>
-                        <TableHead className="text-right">Debit</TableHead>
-                        <TableHead className="text-right">Credit</TableHead>
-                        <TableHead className="text-right">Balance</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Remarks</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {ledger.map((r) => (
-                        <TableRow key={r.key}>
-                          <TableCell className="whitespace-nowrap">{fmtDate(r.date)}</TableCell>
-                          <TableCell>{r.type}</TableCell>
-                          <TableCell className="font-mono text-xs">{r.invoice}</TableCell>
-                          <TableCell className="text-right">{r.debit ? inr(r.debit) : "—"}</TableCell>
-                          <TableCell className="text-right">{r.credit ? inr(r.credit) : "—"}</TableCell>
-                          <TableCell className="text-right font-semibold">{inr(r.balance)}</TableCell>
-                          <TableCell>
-                            {r.status ? <StatusBadge status={r.status as never} /> : "—"}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate">
-                            {r.remarks || "—"}
-                          </TableCell>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {ledger.length} {ledger.length === 1 ? "entry" : "entries"} · Current
+                      Balance:{" "}
+                      <span className="font-semibold text-foreground">
+                        {inr(ledger[ledger.length - 1]?.balance ?? outstanding)}
+                      </span>
+                    </p>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <Download className="h-3.5 w-3.5 mr-1.5" /> Download Ledger
+                          <ChevronDown className="h-3 w-3 ml-1 opacity-70" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => handleDownloadLedger("xlsx")}>
+                          <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+                          <span>Excel (.xlsx)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadLedger("pdf")}>
+                          <FileDown className="h-4 w-4 mr-2 text-rose-600" />
+                          <span>PDF (.pdf)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadLedger("csv")}>
+                          <FileText className="h-4 w-4 mr-2 text-blue-600" />
+                          <span>CSV (.csv)</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead className="text-right">Debit</TableHead>
+                          <TableHead className="text-right">Credit</TableHead>
+                          <TableHead className="text-right">Balance</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Remarks</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {ledger.map((r) => (
+                          <TableRow key={r.key}>
+                            <TableCell className="whitespace-nowrap">{fmtDate(r.date)}</TableCell>
+                            <TableCell>{r.type}</TableCell>
+                            <TableCell className="font-mono text-xs">{r.invoice}</TableCell>
+                            <TableCell className="text-right">
+                              {r.debit ? inr(r.debit) : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {r.credit ? inr(r.credit) : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {inr(r.balance)}
+                            </TableCell>
+                            <TableCell>
+                              {r.status ? <StatusBadge status={r.status as never} /> : "—"}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[240px] truncate">
+                              {r.remarks || "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               )}
             </TabsContent>
@@ -430,31 +612,64 @@ function SupplierDetailPage() {
               ) : supplierBills.length === 0 ? (
                 <EmptyState title="No bills yet" />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Invoice</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Due</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                        <TableHead className="text-right">Outstanding</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {supplierBills.map((b) => (
-                        <TableRow key={b.id}>
-                          <TableCell className="font-medium">{b.invoiceNumber}</TableCell>
-                          <TableCell>{fmtDate(b.invoiceDate)}</TableCell>
-                          <TableCell>{fmtDate(b.dueDate)}</TableCell>
-                          <TableCell className="text-right">{inr(b.total)}</TableCell>
-                          <TableCell className="text-right font-semibold">{inr(outstandingByBill(b.id))}</TableCell>
-                          <TableCell><StatusBadge status={b.status} /></TableCell>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {supplierBills.length} {supplierBills.length === 1 ? "bill" : "bills"}
+                    </p>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <Download className="h-3.5 w-3.5 mr-1.5" /> Download Bills
+                          <ChevronDown className="h-3 w-3 ml-1 opacity-70" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem onClick={() => handleDownloadBills("xlsx")}>
+                          <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+                          <span>Excel (.xlsx)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadBills("pdf")}>
+                          <FileDown className="h-4 w-4 mr-2 text-rose-600" />
+                          <span>PDF (.pdf)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadBills("csv")}>
+                          <FileText className="h-4 w-4 mr-2 text-blue-600" />
+                          <span>CSV (.csv)</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Due</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                          <TableHead className="text-right">Outstanding</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {supplierBills.map((b) => (
+                          <TableRow key={b.id}>
+                            <TableCell className="font-medium">{b.invoiceNumber}</TableCell>
+                            <TableCell>{fmtDate(b.invoiceDate)}</TableCell>
+                            <TableCell>{fmtDate(b.dueDate)}</TableCell>
+                            <TableCell className="text-right">{inr(b.total)}</TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {inr(outstandingByBill(b.id))}
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge status={b.status} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               )}
             </TabsContent>
@@ -482,8 +697,14 @@ function SupplierDetailPage() {
                         <TableRow key={p.id}>
                           <TableCell>{fmtDate(p.paymentDate)}</TableCell>
                           <TableCell className="font-mono text-xs">{p.reference}</TableCell>
-                          <TableCell><Badge variant="outline" className="uppercase text-[10px]">{p.mode}</Badge></TableCell>
-                          <TableCell className="text-right font-semibold">{inr(p.amount)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="uppercase text-[10px]">
+                              {p.mode}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {inr(p.amount)}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -498,17 +719,25 @@ function SupplierDetailPage() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : history.length === 0 ? (
-                <EmptyState title="No history yet" description="Actions on this supplier will appear here." />
+                <EmptyState
+                  title="No history yet"
+                  description="Actions on this supplier will appear here."
+                />
               ) : (
                 <ol className="relative border-l border-border ml-2 space-y-4">
                   {history.map((h) => (
                     <li key={h.id} className="ml-4">
                       <div className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full bg-primary" />
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Badge variant="outline" className="text-[10px]">{h.user}</Badge>
+                        <Badge variant="outline" className="text-[10px]">
+                          {h.user}
+                        </Badge>
                         <span>
                           {new Date(h.at).toLocaleDateString("en-IN")}{" "}
-                          {new Date(h.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(h.at).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </span>
                       </div>
                       <p className="text-sm mt-0.5 font-medium">{h.action}</p>
@@ -536,7 +765,10 @@ function SupplierDetailPage() {
                   ) : (
                     <ul className="text-sm">
                       {monthlyPurchases.map(([m, v]) => (
-                        <li key={m} className="flex justify-between"><span>{m}</span><span className="font-medium">{inr(v)}</span></li>
+                        <li key={m} className="flex justify-between">
+                          <span>{m}</span>
+                          <span className="font-medium">{inr(v)}</span>
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -548,7 +780,10 @@ function SupplierDetailPage() {
                   ) : (
                     <ul className="text-sm">
                       {monthlyPayments.map(([m, v]) => (
-                        <li key={m} className="flex justify-between"><span>{m}</span><span className="font-medium">{inr(v)}</span></li>
+                        <li key={m} className="flex justify-between">
+                          <span>{m}</span>
+                          <span className="font-medium">{inr(v)}</span>
+                        </li>
                       ))}
                     </ul>
                   )}
